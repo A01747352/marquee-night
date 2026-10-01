@@ -7,6 +7,7 @@ import { Stage } from "@/components/tv/Stage";
 import { TvDisplay } from "@/components/tv/TvDisplay";
 import { isLocalOnly } from "@/lib/realtime/room";
 import { useRoomHost } from "@/lib/realtime/useRoomHost";
+import { useGameSounds } from "@/lib/useGameSounds";
 import { useTvGame } from "@/lib/useTvGame";
 
 const subscribeNoop = () => () => {};
@@ -23,6 +24,7 @@ export default function TvPage() {
     dispatch,
     setMuted,
   });
+  const { needsUnlock } = useGameSounds(publicView, muted);
 
   if (status === "loading") return <div className="fixed inset-0 bg-bg" />;
 
@@ -51,7 +53,18 @@ export default function TvPage() {
           onPick={(col, row) => dispatch({ type: "pickTile", col, row })}
         />
       </Stage>
-      <LocalControls view={publicView} dispatch={dispatch} error={error} />
+      {needsUnlock && (
+        <div className="pointer-events-none fixed bottom-4 left-4 z-40 rounded-full bg-panel/90 px-4 py-2 text-sm text-text-muted ring-1 ring-panel-border">
+          Click anywhere to turn on sound
+        </div>
+      )}
+      <LocalControls
+        view={publicView}
+        dispatch={dispatch}
+        error={error}
+        muted={muted}
+        onToggleMute={() => setMuted(!muted)}
+      />
     </>
   );
 }

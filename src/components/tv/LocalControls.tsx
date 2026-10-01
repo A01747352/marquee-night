@@ -14,10 +14,14 @@ export function LocalControls({
   view,
   dispatch,
   error,
+  muted,
+  onToggleMute,
 }: {
   view: PublicView;
   dispatch: (a: Action) => string | null;
   error: string | null;
+  muted: boolean;
+  onToggleMute: () => void;
 }) {
   const [visible, setVisible] = useState(true);
   const [pinned, setPinned] = useState(false);
@@ -38,7 +42,7 @@ export function LocalControls({
   }, []);
 
   const togglePin = useCallback(() => setPinned((p) => !p), []);
-  useKeyboardShortcuts(view, dispatch, togglePin);
+  useKeyboardShortcuts(view, dispatch, togglePin, onToggleMute);
 
   const shown = visible || pinned || !!error;
 
@@ -54,6 +58,9 @@ export function LocalControls({
           <span className="mx-1 h-6 w-px bg-panel-border" />
           <Btn onClick={() => dispatch({ type: "undo" })} title="Z">
             Undo
+          </Btn>
+          <Btn onClick={onToggleMute} title="M">
+            {muted ? "Unmute" : "Mute"}
           </Btn>
           <Btn onClick={toggleFullscreen} title="F">
             Fullscreen
@@ -286,11 +293,18 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 
-function useKeyboardShortcuts(view: PublicView, dispatch: (a: Action) => string | null, togglePin: () => void) {
+function useKeyboardShortcuts(
+  view: PublicView,
+  dispatch: (a: Action) => string | null,
+  togglePin: () => void,
+  toggleMute: () => void,
+) {
   const viewRef = useRef(view);
+  const muteRef = useRef(toggleMute);
   useEffect(() => {
     viewRef.current = view;
-  }, [view]);
+    muteRef.current = toggleMute;
+  }, [view, toggleMute]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -303,6 +317,7 @@ function useKeyboardShortcuts(view: PublicView, dispatch: (a: Action) => string 
 
       if (key === "f") toggleFullscreen();
       else if (key === "h") togglePin();
+      else if (key === "m") muteRef.current();
       else if (key === "z") dispatch({ type: "undo" });
       else if (inQuestion && key === "c") dispatch({ type: "correct" });
       else if (inQuestion && key === "w") dispatch({ type: "wrong" });

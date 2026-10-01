@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { formatScore, type PublicPhase, type Team } from "@/lib/game";
+import { AnimatedScore } from "./motion";
 import { QuestionLayout } from "./QuestionScreen";
 import { Eyebrow, FitText, TeamDot } from "./parts";
 
@@ -166,7 +167,9 @@ export function FinalRevealScreen({ phase, teams }: { phase: Phase<"finalReveal"
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-[18px] tracking-[0.24em] text-text-dim">SCORE</div>
-                  <div className="font-display text-[64px] font-black leading-none">{formatScore(team.score)}</div>
+                  <div className="font-display text-[64px] font-black leading-none">
+                    <AnimatedScore teamId={team.id} score={team.score} delay={0.6} deltaClassName="text-[40px]" />
+                  </div>
                 </div>
               </div>
             </motion.div>

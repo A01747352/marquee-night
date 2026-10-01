@@ -2,6 +2,7 @@
 
 import type { PublicView } from "@/lib/game";
 import { Scoreboard } from "./Scoreboard";
+import { BOARD } from "./motion";
 import { FitText, Wordmark } from "./parts";
 
 export function Board({
@@ -19,8 +20,11 @@ export function Board({
   const rows = view.categories[0]?.tiles.length ?? 5;
 
   return (
-    <div className="bg-board-glow flex h-full flex-col px-[80px] pt-[32px] pb-[44px]">
-      <header className="grid h-[56px] grid-cols-[1fr_auto_1fr] items-center">
+    <div
+      className="bg-board-glow flex h-full flex-col pb-[44px]"
+      style={{ paddingInline: BOARD.padX, paddingTop: BOARD.padTop }}
+    >
+      <header className="grid grid-cols-[1fr_auto_1fr] items-center" style={{ height: BOARD.headerH }}>
         <Wordmark size={44} />
         <div className="max-w-[900px] truncate text-[28px] font-semibold text-text-muted">{view.title}</div>
         <div className="flex items-center gap-3 justify-self-end font-mono text-[22px] tracking-[0.2em] text-text-dim">
@@ -32,11 +36,14 @@ export function Board({
         </div>
       </header>
 
-      <div className="mt-[28px] grid grid-cols-6 gap-[14px]">
+      <div
+        className="grid"
+        style={{ marginTop: BOARD.gridTop, gap: BOARD.gap, gridTemplateColumns: `repeat(${BOARD.cols}, minmax(0, 1fr))`, gridAutoRows: BOARD.cellH }}
+      >
         {view.categories.map((c, col) => (
           <div
             key={col}
-            className="flex h-[108px] items-center justify-center rounded-[10px] border-2 border-cat-border bg-cat-bg px-4"
+            className="flex items-center justify-center rounded-[10px] border-2 border-cat-border bg-cat-bg px-4"
           >
             <FitText
               max={38}
@@ -52,14 +59,14 @@ export function Board({
         {Array.from({ length: rows }, (_, row) =>
           view.categories.map((c, col) => {
             const tile = c.tiles[row];
-            if (tile.played) return <div key={`${col}-${row}`} className="tile-played h-[108px]" />;
+            if (tile.played) return <div key={`${col}-${row}`} className="tile-played" />;
             return (
               <button
                 key={`${col}-${row}`}
                 type="button"
                 disabled={!onPick}
                 onClick={() => onPick?.(col, row)}
-                className="tile-face flex h-[108px] items-center justify-center font-display text-[76px] font-black leading-none text-glow-gold enabled:cursor-pointer enabled:hover:brightness-110"
+                className="tile-face flex items-center justify-center font-display text-[76px] font-black leading-none text-glow-gold enabled:cursor-pointer enabled:hover:brightness-110"
               >
                 {tile.value}
               </button>
