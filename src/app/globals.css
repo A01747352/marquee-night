@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* Design tokens — Direction A · Studio Glow (see "Marquee Night - Design Spec.md"). */
+@theme {
+  --color-bg: #050818;
+  --color-panel: #0b1438;
+  --color-panel-border: #1d2b6b;
+  --color-cat-bg: #0d1a52;
+  --color-cat-border: #2446c8;
+  --color-tile-top: #3569ff;
+  --color-tile-mid: #1a3fdc;
+  --color-tile-bottom: #1231b0;
+  --color-tile-played: #0a1233;
+  --color-tile-played-border: #16225a;
+  --color-gold: #ffc53d;
+  --color-gold-dark: #7a4b00;
+  --color-hot: #ff3ea5;
+  --color-text: #eef1ff;
+  --color-text-muted: #b9c3ff;
+  --color-text-dim: #7d88c4;
+  --color-correct: #2fbf5b;
+  --color-correct-soft: #7ee06b;
+  --color-wrong: #e5484d;
+  --color-wrong-soft: #ff6b6b;
+  --color-steal: #b18cff;
+  --color-timer-track: #18286e;
+
+  --font-display: var(--font-big-shoulders), "Arial Narrow", Impact, sans-serif;
+  --font-body: var(--font-archivo), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --animate-spin-slow: spin 40s linear infinite;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+/* ---------- Surfaces ---------- */
+
+@utility bg-board-glow {
+  background: radial-gradient(ellipse 90% 70% at 50% 0%, #1b2e7a 0%, #0a1233 45%, #050818 100%);
+}
+
+@utility bg-question-glow {
+  background: radial-gradient(ellipse 80% 80% at 50% 50%, #1d3ab8 0%, #0d1d66 50%, #050818 100%);
+}
+
+@utility bg-final {
+  background: radial-gradient(ellipse 90% 80% at 50% 20%, #3a1a5c 0%, #140a33 50%, #050818 100%);
+}
+
+@utility tile-face {
+  background: linear-gradient(
+    180deg,
+    var(--color-tile-top) 0%,
+    var(--color-tile-mid) 55%,
+    var(--color-tile-bottom) 100%
+  );
+  border-radius: 10px;
+  box-shadow:
+    0 0 28px rgba(53, 105, 255, 0.45),
+    inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+}
+
+@utility tile-played {
+  background: var(--color-tile-played);
+  border: 2px solid var(--color-tile-played-border);
+  border-radius: 10px;
+}
+
+/* ---------- Type effects ---------- */
+
+@utility text-glow-gold {
+  color: var(--color-gold);
+  text-shadow:
+    0 0 22px rgba(255, 197, 61, 0.6),
+    0 3px 0 var(--color-gold-dark);
+}
+
+@utility text-glow-gold-heavy {
+  color: var(--color-gold);
+  text-shadow:
+    0 0 60px rgba(255, 197, 61, 0.75),
+    0 0 120px rgba(255, 150, 30, 0.45),
+    0 10px 0 var(--color-gold-dark);
+}
+
+@utility ring-active {
+  outline: 4px solid var(--color-hot);
+  outline-offset: 4px;
+  box-shadow: 0 0 32px rgba(255, 62, 165, 0.6);
+}
+
+@utility answer-card {
+  background: var(--color-gold);
+  color: var(--color-bg);
+  border-radius: 20px;
+  box-shadow: 0 0 70px rgba(255, 197, 61, 0.55);
+}
+
+/* Bonus tile spotlight rays. */
+@utility bonus-rays {
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 197, 61, 0.22) 0deg 7deg,
+    transparent 7deg 20deg
+  );
+}
+
+.text-balance {
+  text-wrap: balance;
+}
