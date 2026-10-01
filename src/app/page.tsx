@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Wordmark } from "@/components/tv/parts";
 import {
   applyAction,
@@ -14,6 +15,7 @@ import {
   validateGame,
   type GameFile,
 } from "@/lib/game";
+import { listGames, loadGame, type SavedGameMeta } from "@/lib/library";
 import { loadSession, newRoomCode, saveSession, type Session } from "@/lib/session";
 
 interface TeamDraft {
@@ -25,8 +27,19 @@ interface TeamDraft {
 let nextKey = 0;
 const draft = (color: string, name = ""): TeamDraft => ({ key: nextKey++, name, color });
 
-export default function SetupPage() {
+export default function SetupPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <SetupPage />
+    </Suspense>
+  );
+}
+
+function SetupPage() {
   const router = useRouter();
+  const gameParam = useSearchParams().get("game");
+  const [library, setLibrary] = useState<SavedGameMeta[]>([]);
+  const [chosenId, setChosenId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [game, setGame] = useState<GameFile | null>(null);
   const [problems, setProblems] = useState<{ errors: string[]; warnings: string[] }>({ errors: [], warnings: [] });
@@ -39,7 +52,15 @@ export default function SetupPage() {
     loadSession().then((s) => {
       if (s && s.state.phase.kind !== "winner") setResume(s);
     });
+    listGames().then(setLibrary);
   }, []);
+
+  const loadSaved = async (id: string) => {
+    const saved = await loadGame(id);
+    if (!saved) return;
+    setChosenId(id);
+    showResult(validateGame(saved));
+  };
 
   const showResult = (result: ReturnType<typeof validateGame>) => {
     if (result.ok) {
@@ -51,12 +72,24 @@ export default function SetupPage() {
     }
   };
 
+  // Coming from the editor's "Play on this screen".
+  useEffect(() => {
+    if (!gameParam) return;
+    loadGame(gameParam).then((saved) => {
+      if (!saved) return;
+      setChosenId(gameParam);
+      showResult(validateGame(saved));
+    });
+  }, [gameParam]);
+
   const loadSample = async () => {
+    setChosenId(null);
     const res = await fetch("/sample-game.json");
     showResult(validateGame(await res.json()));
   };
 
   const importFile = async (file: File) => {
+    setChosenId(null);
     showResult(parseGameJson(await file.text()));
   };
 
@@ -122,6 +155,22 @@ export default function SetupPage() {
         )}
 
         <Section step="1" title="Load a game">
+          {library.length > 0 && (
+            <div className="mb-4 flex flex-col gap-2">
+              <div className="font-mono text-xs tracking-[0.2em] text-text-dim">SAVED GAMES</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {library.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => loadSaved(g.id)}
+                    className={`truncate rounded-xl bg-panel px-4 py-3 text-left font-semibold ring-2 ${chosenId === g.id ? "ring-gold" : "ring-panel-border hover:ring-cat-border"}`}
+                  >
+                    {g.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap gap-3">
             <button onClick={loadSample} className="rounded-xl bg-panel px-5 py-3 font-semibold ring-2 ring-panel-border hover:ring-cat-border">
               Use the sample game
@@ -132,6 +181,12 @@ export default function SetupPage() {
             >
               Import JSON…
             </button>
+            <Link
+              href={chosenId ? `/editor?id=${chosenId}` : "/editor"}
+              className="rounded-xl px-5 py-3 font-semibold text-text-muted ring-2 ring-transparent hover:text-text hover:ring-panel-border"
+            >
+              {chosenId ? "Edit this game" : "Write a game…"}
+            </Link>
             <input
               ref={fileInput}
               type="file"

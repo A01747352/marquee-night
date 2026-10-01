@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import sample from "../../../public/sample-game.json";
-import { createEmptyGame, exportGame, parseGameJson, validateGame } from "./validate";
+import { createEmptyGame, draftFromUnknown, exportGame, gameProgress, parseGameJson, validateGame } from "./validate";
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -122,5 +122,37 @@ describe("parseGameJson / exportGame", () => {
     const r = validateGame(createEmptyGame());
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.length).toBeGreaterThan(30);
+  });
+});
+
+describe("draftFromUnknown (editor import)", () => {
+  it("keeps a valid game exactly", () => {
+    const r = validateGame(sample);
+    if (!r.ok) throw new Error();
+    expect(draftFromUnknown(sample)).toEqual(r.game);
+  });
+
+  it("fills gaps in a partial file instead of rejecting it", () => {
+    const draft = draftFromUnknown({
+      title: "Half done",
+      categories: [{ name: "Only one", questions: [{ question: "Q?", answer: "A" }] }],
+    });
+    expect(draft.categories).toHaveLength(6);
+    expect(draft.categories[0].questions).toHaveLength(5);
+    expect(draft.categories[0].questions[0]).toEqual({ value: 100, question: "Q?", answer: "A", bonus: false });
+    expect(draft.categories[0].questions[4].value).toBe(500);
+    expect(draft.final).toEqual({ category: "", question: "", answer: "" });
+    expect(gameProgress(draft)).toEqual({ written: 1, total: 30, bonus: 0, namedCategories: 1, finalReady: false });
+  });
+
+  it("survives garbage", () => {
+    expect(draftFromUnknown("nope")).toEqual(createEmptyGame());
+    expect(draftFromUnknown({ categories: [null, 3, { questions: "x" }] }).categories).toHaveLength(6);
+  });
+
+  it("an exported draft round-trips through import", () => {
+    const g = createEmptyGame("Draft");
+    g.categories[2].questions[1].question = "Only a question";
+    expect(draftFromUnknown(JSON.parse(exportGame(g)))).toEqual(g);
   });
 });

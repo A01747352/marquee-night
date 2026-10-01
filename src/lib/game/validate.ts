@@ -232,3 +232,77 @@ export function createEmptyGame(title = "Untitled game"): GameFile {
     final: { category: "", question: "", answer: "" },
   };
 }
+
+/**
+ * Lenient import for the editor: turns any parsed JSON into a full 6×5 draft,
+ * keeping whatever is usable and leaving the rest blank. Never throws.
+ */
+export function draftFromUnknown(data: unknown): GameFile {
+  const base = createEmptyGame();
+  if (!isObj(data)) return base;
+
+  const t = data.timerSeconds;
+  const timerSeconds =
+    typeof t === "number" && Number.isInteger(t) && t >= MIN_TIMER_SECONDS && t <= MAX_TIMER_SECONDS
+      ? t
+      : DEFAULT_TIMER_SECONDS;
+  const rawCats = Array.isArray(data.categories) ? data.categories : [];
+
+  const categories = base.categories.map((blank, ci): Category => {
+    const rc = rawCats[ci];
+    if (!isObj(rc)) return blank;
+    const rawQs = Array.isArray(rc.questions) ? rc.questions : [];
+    return {
+      name: text(rc.name),
+      questions: blank.questions.map((bq, qi): Question => {
+        const rq = rawQs[qi];
+        if (!isObj(rq)) return bq;
+        const v = rq.value;
+        const media = looseMedia(rq.media);
+        return {
+          value: typeof v === "number" && Number.isInteger(v) && v > 0 ? v : bq.value,
+          question: text(rq.question),
+          answer: text(rq.answer),
+          ...(media && { media }),
+          bonus: rq.bonus === true,
+        };
+      }),
+    };
+  });
+
+  const rf = isObj(data.final) ? data.final : {};
+  const finalMedia = looseMedia(rf.media);
+  return {
+    title: text(data.title) || base.title,
+    timerSeconds,
+    categories,
+    final: {
+      category: text(rf.category),
+      question: text(rf.question),
+      answer: text(rf.answer),
+      ...(finalMedia && { media: finalMedia }),
+    },
+  };
+}
+
+function looseMedia(raw: unknown): Media | null {
+  if (!isObj(raw)) return null;
+  const src = text(raw.src);
+  if ((raw.type !== "image" && raw.type !== "audio") || !src) return null;
+  return { type: raw.type, src };
+}
+
+export const isQuestionWritten = (q: Question) => q.question.trim() !== "" && q.answer.trim() !== "";
+
+/** Editor status line numbers. */
+export function gameProgress(game: GameFile) {
+  const questions = game.categories.flatMap((c) => c.questions);
+  const f = game.final;
+  return {
+    written: questions.filter(isQuestionWritten).length,
+    total: questions.length,
+    bonus: questions.filter((q) => q.bonus).length,
+    namedCategories: game.categories.filter((c) => c.name.trim() !== "").length,
+    finalReady: f.category.trim() !== "" && f.question.trim() !== "" && f.answer.trim() !== "",
+  };
+}
