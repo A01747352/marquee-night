@@ -4,7 +4,9 @@ import { useRef, useState } from "react";
 import type { Media } from "@/lib/game";
 import { dataUriBytes, fileToMedia, formatBytes } from "@/lib/media";
 
-/** Striped dropzone for a question's image or audio, with URL paste as an alternative. */
+const MEDIA_LABEL = { image: "Image", audio: "Audio", video: "Video" } as const;
+
+/** Striped dropzone for a question's image, audio or video, with URL paste as an alternative. */
 export function MediaDrop({ media, onChange }: { media?: Media; onChange: (media: Media | undefined) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +36,11 @@ export function MediaDrop({ media, onChange }: { media?: Media; onChange: (media
       setError("Paste a link starting with http:// or https://");
       return;
     }
-    const type = /\.(mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i.test(src) ? "audio" : "image";
+    const type = /\.(mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i.test(src)
+      ? "audio"
+      : /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(src)
+        ? "video"
+        : "image";
     onChange({ type, src });
     setNote(`Linked ${type} · needs internet on game night`);
     setError(null);
@@ -48,12 +54,14 @@ export function MediaDrop({ media, onChange }: { media?: Media; onChange: (media
         {media.type === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element -- data: URIs and arbitrary hosts
           <img src={media.src} alt="" className="max-h-[180px] w-full rounded-lg object-contain" />
+        ) : media.type === "video" ? (
+          <video src={media.src} controls className="max-h-[180px] w-full rounded-lg bg-black" />
         ) : (
           <audio src={media.src} controls className="w-full" />
         )}
         <div className="flex items-center justify-between gap-2 text-[12px] text-text-muted">
           <span className="truncate">
-            {note ?? (bytes ? `${media.type === "image" ? "Image" : "Audio"} · ${formatBytes(bytes)}` : `Linked ${media.type}`)}
+            {note ?? (bytes ? `${MEDIA_LABEL[media.type]} · ${formatBytes(bytes)}` : `Linked ${media.type}`)}
           </span>
           <button
             type="button"
@@ -95,15 +103,15 @@ export function MediaDrop({ media, onChange }: { media?: Media; onChange: (media
           <span>Compressing…</span>
         ) : (
           <>
-            <span className="font-semibold text-text">Drop image or audio</span>
-            <span>compressed to ~500 KB · or click to choose</span>
+            <span className="font-semibold text-text">Drop an image, audio or video</span>
+            <span>images compressed to ~500 KB · or click to choose</span>
           </>
         )}
       </button>
       <input
         ref={input}
         type="file"
-        accept="image/*,audio/*"
+        accept="image/*,audio/*,video/*"
         className="hidden"
         onChange={(e) => {
           take(e.target.files?.[0]);
@@ -115,7 +123,7 @@ export function MediaDrop({ media, onChange }: { media?: Media; onChange: (media
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addUrl())}
-          placeholder="…or paste an image/audio URL"
+          placeholder="…or paste an image, audio or video URL"
           className="min-w-0 flex-1 rounded-lg bg-bg px-3 py-2 text-[13px] outline-none ring-1 ring-panel-border focus:ring-cat-border"
         />
         <button

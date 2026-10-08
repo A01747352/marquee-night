@@ -5,9 +5,18 @@ import { FinalQuestionScreen } from "@/components/tv/FinalScreens";
 import { QuestionScreen } from "@/components/tv/QuestionScreen";
 import { RevealScreen } from "@/components/tv/RevealScreen";
 import { Stage } from "@/components/tv/Stage";
-import type { GameFile, Team, TileRef } from "@/lib/game";
+import {
+  createGameState,
+  defaultPrompt,
+  questionType,
+  toPublicView,
+  type GameFile,
+  type GameState,
+  type Team,
+  type TileRef,
+} from "@/lib/game";
 
-const PREVIEW_TEAM: Team = { id: "preview", name: "Team", color: "#35d6ff", score: 0 };
+const PREVIEW_TEAM: Team = { id: "preview", name: "Team", color: "#35d6ff", score: 0, streak: 0, correct: 0 };
 
 /** Full-screen look at a tile (or the final) exactly as the TV will render it. */
 export function PreviewModal({
@@ -34,31 +43,45 @@ export function PreviewModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const timer = { durationMs: game.timerSeconds * 1000, remainingMs: game.timerSeconds * 1000, running: false };
+  const timer = { durationMs: game.timerSeconds * 1000, remainingMs: game.timerSeconds * 1000, startedAt: null };
   let screen: React.ReactNode;
 
   if (tile) {
-    const category = game.categories[tile.col].name || `Category ${tile.col + 1}`;
+    // Build the phase with the real projection so the preview can't drift from the TV.
     const q = game.categories[tile.col].questions[tile.row];
-    const common = { tile, category, value: q.value, question: q.question || "(no question yet)", media: q.media ?? null };
-    screen = showAnswer ? (
-      <RevealScreen phase={{ kind: "reveal", ...common, answer: q.answer || "(no answer yet)", results: [] }} teams={[]} />
-    ) : (
-      <QuestionScreen
-        phase={{
+    const filled: GameFile = {
+      ...game,
+      categories: game.categories.map((c, col) => ({
+        ...c,
+        name: c.name || `Category ${col + 1}`,
+        questions: c.questions.map((x, row) =>
+          col === tile.col && row === tile.row
+            ? { ...x, question: x.question || defaultPrompt(questionType(x)) || "(no question yet)", answer: x.answer || "(no answer yet)" }
+            : x,
+        ),
+      })),
+    };
+    const base = { ...createGameState(filled), teams: [PREVIEW_TEAM] };
+    const closest = questionType(q) === "closest";
+    const phase: GameState["phase"] = showAnswer
+      ? { kind: "reveal", tile, results: [] }
+      : {
           kind: "question",
-          ...common,
+          tile,
           pickerId: PREVIEW_TEAM.id,
           answeringId: PREVIEW_TEAM.id,
-          stage: "picker",
-          isBonus: false,
-          stake: q.value,
+          stage: closest ? "all" : "picker",
+          wager: null,
           results: [],
           timer,
-        }}
-        teams={[PREVIEW_TEAM]}
-      />
-    );
+        };
+    const p = toPublicView({ ...base, phase }).phase;
+    screen =
+      p.kind === "reveal" ? (
+        <RevealScreen phase={p} teams={[]} />
+      ) : p.kind === "question" ? (
+        <QuestionScreen phase={p} teams={[PREVIEW_TEAM]} />
+      ) : null;
   } else {
     const f = game.final;
     screen = (
@@ -69,7 +92,7 @@ export function PreviewModal({
           question: f.question || "(no question yet)",
           media: f.media ?? null,
           teamIds: [PREVIEW_TEAM.id],
-          timer,
+          timer: { ...timer, running: false },
         }}
         teams={[PREVIEW_TEAM]}
       />

@@ -1,12 +1,13 @@
 "use client";
 
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import type { Action, HostView } from "@/lib/game";
+import type { Action, HostView, PlayerView } from "@/lib/game";
 
 /**
- * Messages on a room channel. The TV owns the game; the phone sends actions
- * and receives a HostView (with the answer). Nothing the phone sends ever
- * contains an answer, and the TV only renders its own PublicView.
+ * Messages on a room channel. The TV owns the game; the host's phone sends
+ * actions and receives a HostView (with the answer). Players' phones only
+ * join and receive a PlayerView (no question, no answer). Nothing a phone
+ * sends ever contains an answer, and the TV only renders its own PublicView.
  */
 export interface RoomSettings {
   muted: boolean;
@@ -25,12 +26,18 @@ export interface RoomEvents {
   state: { view: HostView; settings: RoomSettings };
   /** TV → phone: result of one action. */
   ack: { clientId: string; id: string; error: string | null };
+  /** player → TV: "send me the player view" (on join, rejoin, wake). */
+  playerHello: { clientId: string };
+  /** player → TV: a signed-in player wants in (repeated on reconnect; joining is idempotent). */
+  join: { clientId: string; player: { id: string; name: string; imageUrl?: string } };
+  /** TV → players. `nightId` is set when the night counts toward the season leaderboard. */
+  players: { view: PlayerView; nightId: string | null };
 }
 
 export type RoomEvent = keyof RoomEvents;
 export type LinkStatus = "connecting" | "live" | "offline";
 
-const EVENTS: RoomEvent[] = ["hello", "ping", "action", "settings", "state", "ack"];
+const EVENTS: RoomEvent[] = ["hello", "ping", "action", "settings", "state", "ack", "playerHello", "join", "players"];
 
 export interface RoomLink {
   send<E extends RoomEvent>(event: E, payload: RoomEvents[E]): void;

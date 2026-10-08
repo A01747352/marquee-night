@@ -67,6 +67,27 @@ body {
     inset 0 -4px 0 rgba(0, 0, 0, 0.25);
 }
 
+/* The hardest row ("deep cut"): the same tile, gone dark and red-hot. */
+@utility tile-deep {
+  background: linear-gradient(180deg, #5a1030 0%, #2c0820 55%, #12040f 100%);
+  border-radius: 10px;
+  box-shadow:
+    0 0 30px rgba(229, 40, 77, 0.45),
+    inset 0 2px 0 rgba(255, 120, 140, 0.3),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.45);
+}
+
+@utility bg-deep-glow {
+  background: radial-gradient(ellipse 80% 80% at 50% 50%, #4a0d2a 0%, #1c0618 50%, #050208 100%);
+}
+
+@utility text-glow-blood {
+  color: #ff5a6e;
+  text-shadow:
+    0 0 26px rgba(255, 40, 70, 0.75),
+    0 3px 0 #4a0010;
+}
+
 @utility tile-played {
   background: var(--color-tile-played);
   border: 2px solid var(--color-tile-played-border);
@@ -110,6 +131,24 @@ body {
     rgba(255, 197, 61, 0.22) 0deg 7deg,
     transparent 7deg 20deg
   );
+}
+
+/* A slow flicker for deep-cut tiles and streak flames. */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  45% { opacity: 0.86; }
+  50% { opacity: 0.7; }
+  55% { opacity: 0.92; }
+}
+
+.animate-flicker {
+  animation: flicker 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-flicker {
+    animation: none;
+  }
 }
 
 .text-balance {

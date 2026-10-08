@@ -1,30 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocalControls } from "@/components/tv/LocalControls";
 import { Stage } from "@/components/tv/Stage";
 import { TvDisplay } from "@/components/tv/TvDisplay";
+import type { RecordStatus } from "@/components/tv/WinnerScreen";
+import { authEnabled } from "@/lib/auth";
+import { submitResults } from "@/lib/leaderboard";
 import { isLocalOnly } from "@/lib/realtime/room";
 import { useRoomHost } from "@/lib/realtime/useRoomHost";
 import { useGameSounds } from "@/lib/useGameSounds";
 import { useTvGame } from "@/lib/useTvGame";
 
 const subscribeNoop = () => () => {};
+const RETRY_MS = 10_000;
 
 export default function TvPage() {
-  const { status, session, state, publicView, dispatch, error, setMuted } = useTvGame();
+  const { status, session, state, publicView, dispatch, error, setMuted, markRecorded } = useTvGame();
   const origin = useSyncExternalStore(subscribeNoop, () => window.location.origin, () => "");
   const muted = !!session?.muted;
   const settings = useMemo(() => ({ muted }), [muted]);
+  const nightId = session?.nightId ?? null;
   const { hostConnected } = useRoomHost({
     roomCode: session?.roomCode ?? null,
+    nightId,
     state,
     settings,
     dispatch,
     setMuted,
   });
   const { needsUnlock } = useGameSounds(publicView, muted);
+  const record = useRecordResults(nightId, session?.recorded ?? false, state, markRecorded);
 
   if (status === "loading") return <div className="fixed inset-0 bg-bg" />;
 
@@ -39,17 +46,19 @@ export default function TvPage() {
     );
   }
 
-  const joinUrl = `${origin}/host?room=${session.roomCode}`;
-
   return (
     <>
       <Stage>
         <TvDisplay
           view={publicView}
           roomCode={session.roomCode}
-          joinUrl={joinUrl}
+          joinUrl={`${origin}/${authEnabled ? "play" : "host"}?room=${session.roomCode}`}
+          playersJoin={authEnabled}
+          hostUrl={`${origin}/host`}
           hostConnected={hostConnected}
           localOnly={isLocalOnly}
+          ranked={!!nightId}
+          record={record}
           onPick={(col, row) => dispatch({ type: "pickTile", col, row })}
         />
       </Stage>
@@ -67,4 +76,48 @@ export default function TvPage() {
       />
     </>
   );
+}
+
+/** Saves a ranked night once the winner is shown, retrying until it sticks. */
+function useRecordResults(
+  nightId: string | null,
+  recorded: boolean,
+  state: ReturnType<typeof useTvGame>["state"],
+  markRecorded: () => void,
+): RecordStatus {
+  const [failed, setFailed] = useState(false);
+  const atWinner = state?.phase.kind === "winner";
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
+  useEffect(() => {
+    if (!nightId || recorded || !atWinner) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const attempt = async () => {
+      const current = stateRef.current;
+      if (!current) return;
+      const err = await submitResults(nightId, current);
+      if (cancelled) return;
+      if (err) {
+        console.error("Could not save the night:", err);
+        setFailed(true);
+        timer = setTimeout(attempt, RETRY_MS);
+      } else {
+        setFailed(false);
+        markRecorded();
+      }
+    };
+    attempt();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [nightId, recorded, atWinner, markRecorded]);
+
+  if (!nightId) return "off";
+  if (recorded) return "saved";
+  return failed ? "error" : "saving";
 }

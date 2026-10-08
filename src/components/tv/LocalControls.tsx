@@ -81,9 +81,20 @@ function PhaseControls({ view, dispatch }: { view: PublicView; dispatch: (a: Act
   switch (p.kind) {
     case "lobby":
       return (
-        <Btn primary onClick={() => dispatch({ type: "startGame" })}>
-          Start game
-        </Btn>
+        <>
+          {view.players.length > 0 && (
+            <Btn
+              onClick={() =>
+                dispatch({ type: "randomizeTeams", seed: crypto.getRandomValues(new Uint32Array(1))[0] })
+              }
+            >
+              Shuffle teams
+            </Btn>
+          )}
+          <Btn primary onClick={() => dispatch({ type: "startGame" })}>
+            Start game
+          </Btn>
+        </>
       );
     case "board":
       return (
@@ -120,6 +131,17 @@ function PhaseControls({ view, dispatch }: { view: PublicView; dispatch: (a: Act
             <Btn primary onClick={() => dispatch({ type: "startFinalReveal" })}>
               Reveal answers
             </Btn>
+          </>
+        );
+      }
+      if (p.stage === "all") {
+        return (
+          <>
+            <ClosestInputs teams={view.teams} onLock={(guesses) => dispatch({ type: "judgeClosest", guesses })} />
+            <Btn onClick={() => dispatch({ type: "revealAnswer" })} title="R">
+              Nobody · reveal
+            </Btn>
+            {timerBtns}
           </>
         );
       }
@@ -222,6 +244,45 @@ function WagerInput({
         className="w-24 rounded-lg border border-panel-border bg-panel px-2 py-1.5 text-text"
       />
       <Btn type="submit">{locked ? "Update" : "Lock"}</Btn>
+    </form>
+  );
+}
+
+function ClosestInputs({
+  teams,
+  onLock,
+}: {
+  teams: PublicView["teams"];
+  onLock: (guesses: Record<string, number>) => string | null;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const guesses: Record<string, number> = {};
+        for (const [id, v] of Object.entries(values)) {
+          if (v.trim() !== "" && Number.isFinite(Number(v))) guesses[id] = Number(v);
+        }
+        onLock(guesses);
+      }}
+    >
+      {teams.map((t) => (
+        <label key={t.id} className="flex items-center gap-1 text-text-muted">
+          {t.name}
+          <input
+            type="number"
+            step="any"
+            value={values[t.id] ?? ""}
+            onChange={(e) => setValues((v) => ({ ...v, [t.id]: e.target.value }))}
+            className="w-24 rounded-lg border border-panel-border bg-panel px-2 py-1.5 text-text"
+          />
+        </label>
+      ))}
+      <Btn type="submit" primary>
+        Closest wins
+      </Btn>
     </form>
   );
 }

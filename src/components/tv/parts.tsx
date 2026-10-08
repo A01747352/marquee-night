@@ -1,7 +1,15 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { formatDelta, type Media, type Team, type TileResult, type TimerView } from "@/lib/game";
+import {
+  formatDelta,
+  STREAK_BONUS_EVERY,
+  STREAK_SHOW,
+  type Media,
+  type Team,
+  type TileResult,
+  type TimerView,
+} from "@/lib/game";
 import { useCountdown } from "@/lib/useCountdown";
 
 export function Wordmark({ size = 44, className = "" }: { size?: number; className?: string }) {
@@ -128,6 +136,18 @@ export function FitText({
 
 /** Image or audio for a question (560px block on the TV). */
 export function MediaBlock({ media, width = 560 }: { media: Media; width?: number }) {
+  if (media.type === "video") {
+    return (
+      <video
+        src={media.src}
+        controls
+        autoPlay
+        playsInline
+        className="max-h-[640px] rounded-[20px] border-2 border-panel-border bg-black shadow-[0_0_60px_rgba(53,105,255,0.35)]"
+        style={{ width: Math.max(width, 820) }}
+      />
+    );
+  }
   if (media.type === "image") {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- data: URIs and arbitrary hosts
@@ -158,6 +178,33 @@ export function MediaBlock({ media, width = 560 }: { media: Media; width?: numbe
   );
 }
 
+/** 🔥 3 STREAK from 3 in a row; 🔥🔥 at 5 and up. Renders nothing below the threshold. */
+export function StreakBadge({ streak = 0, size = 20, className = "" }: { streak?: number; size?: number; className?: string }) {
+  if (streak < STREAK_SHOW) return null;
+  const hot = streak >= STREAK_BONUS_EVERY;
+  return (
+    <span
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-0.5 font-mono font-medium tracking-[0.16em] ${hot ? "bg-[#ff5a1f]/25 text-[#ffb36b] shadow-[0_0_18px_rgba(255,110,40,0.5)]" : "bg-[#ff8a3d]/15 text-[#ffb36b]"} ${className}`}
+      style={{ fontSize: size }}
+    >
+      <span className="animate-flicker">{hot ? "🔥🔥" : "🔥"}</span>
+      {streak} STREAK
+    </span>
+  );
+}
+
+/** Small uppercase label for the question's type ("MULTIPLE CHOICE"). */
+export function TypeTag({ children, tone = "gold", size = 20 }: { children: ReactNode; tone?: "gold" | "blood"; size?: number }) {
+  return (
+    <span
+      className={`inline-block rounded-full border-2 px-4 py-1 font-mono uppercase tracking-[0.24em] ${tone === "blood" ? "border-[#ff5a6e]/70 text-[#ff8a98]" : "border-gold/60 text-gold"}`}
+      style={{ fontSize: size }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function ResultChip({ result, team }: { result: TileResult; team: Team }) {
   const gain = result.delta > 0;
   const loss = result.delta < 0;
@@ -176,13 +223,25 @@ export function ResultChip({ result, team }: { result: TileResult; team: Team })
             {result.delta === 0 ? "STEAL · NO PENALTY" : "STEAL"}
           </span>
         )}
+        {result.guess !== undefined && (
+          <span className="font-mono text-[18px] tracking-[0.24em] text-text-dim">
+            GUESSED {result.guess.toLocaleString("en-US")}
+          </span>
+        )}
         <span className="text-[34px] font-semibold">{team.name}</span>
+        <StreakBadge streak={result.streak} size={16} className="mt-1" />
       </div>
       <span
         className={`font-display text-[64px] font-black ${gain ? "text-correct-soft" : loss ? "text-wrong-soft" : "text-text-dim"}`}
       >
         {formatDelta(result.delta)}
       </span>
+      {!!result.streakBonus && (
+        <span className="rounded-[12px] bg-[#ff5a1f]/20 px-4 py-2 font-display text-[34px] font-black leading-none text-[#ffb36b]">
+          +{result.streakBonus}
+          <span className="block font-mono text-[13px] font-medium tracking-[0.2em]">STREAK BONUS</span>
+        </span>
+      )}
     </div>
   );
 }

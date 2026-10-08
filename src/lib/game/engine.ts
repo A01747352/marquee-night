@@ -3,14 +3,18 @@ import {
   MAX_TEAMS,
   MAX_UNDO,
   MIN_TEAMS,
+  STREAK_BONUS,
+  STREAK_BONUS_EVERY,
   TEAM_COLORS,
 } from "./constants";
+import { questionType, seededRandom } from "./questions";
 import type {
   Action,
   GameFile,
   GameState,
   HistoryEntry,
   Phase,
+  Player,
   Question,
   Team,
   TileRef,
@@ -36,6 +40,7 @@ export function createGameState(game: GameFile): GameState {
   return {
     game,
     teams: [],
+    players: [],
     turn: 0,
     played: game.categories.map((c) => c.questions.map(() => false)),
     phase: { kind: "lobby" },
@@ -59,6 +64,8 @@ function buildTeams(input: { name: string; color: string }[]): Team[] {
       name,
       color: t.color || TEAM_COLORS[i % TEAM_COLORS.length],
       score: 0,
+      streak: 0,
+      correct: 0,
     };
   });
 }
@@ -107,6 +114,16 @@ export function nextTeamId(state: { teams: Team[] }, teamId: string): string {
   return state.teams[(i + 1) % state.teams.length].id;
 }
 
+/** Bonus tiles and Wager tiles both ask the picker for a wager before the question. */
+export function asksForWager(q: Question): boolean {
+  return q.bonus || questionType(q) === "wager";
+}
+
+/** Players on a team, in roster order. */
+export function teamMembers(state: { players?: Player[] }, teamId: string): Player[] {
+  return (state.players ?? []).filter((p) => p.teamId === teamId);
+}
+
 /** Highest bonus wager allowed: up to the score, or 500 if the score is lower. */
 export function maxBonusWager(score: number): number {
   return Math.max(score, BONUS_WAGER_FLOOR);
@@ -130,7 +147,8 @@ export function standings(teams: Team[]): Team[] {
 
 type Snapshot = Omit<GameState, "history">;
 
-const NOT_UNDOABLE: Action["type"][] = ["undo", "timerStart", "timerPause", "timerSkip"];
+// Joining isn't undoable: an undo should never kick someone out of the game.
+const NOT_UNDOABLE: Action["type"][] = ["undo", "timerStart", "timerPause", "timerSkip", "addPlayer"];
 
 /**
  * Applies a host action and returns the new state. Pure: the caller passes the
@@ -140,7 +158,15 @@ export function applyAction(state: GameState, action: Action, now: number = Date
   if (action.type === "undo") {
     const last = state.history.at(-1);
     if (!last) fail("Nothing to undo.");
-    return { ...last.snapshot, history: state.history.slice(0, -1) };
+    // Keep anyone who joined after the snapshot was taken.
+    const before = last.snapshot.players ?? [];
+    const joined = (state.players ?? []).filter((p) => !before.some((b) => b.id === p.id));
+    const teamIds = new Set(last.snapshot.teams.map((t) => t.id));
+    const players = [
+      ...before,
+      ...joined.map((p) => (p.teamId && teamIds.has(p.teamId) ? p : { ...p, teamId: null })),
+    ];
+    return { ...last.snapshot, players, history: state.history.slice(0, -1) };
   }
 
   const { history, ...snapshot } = state;
@@ -157,7 +183,59 @@ function reduce(s: Snapshot, action: Exclude<Action, { type: "undo" }>, now: num
   switch (action.type) {
     case "setTeams": {
       if (phase.kind !== "lobby") fail("Teams can only be changed in the lobby.");
-      return { ...s, teams: buildTeams(action.teams), turn: 0 };
+      const teams = buildTeams(action.teams);
+      const ids = new Set(teams.map((t) => t.id));
+      const players = (s.players ?? []).map((p) => (p.teamId && ids.has(p.teamId) ? p : { ...p, teamId: null }));
+      return { ...s, teams, players, turn: 0 };
+    }
+
+    case "addPlayer": {
+      const id = action.player.id.trim();
+      const name = action.player.name.trim().slice(0, 40);
+      if (!id || !name) fail("A player needs an id and a name.");
+      const players = s.players ?? [];
+      if (players.some((p) => p.id === id)) {
+        // Rejoining (new phone, refresh): keep their team, refresh the profile.
+        return {
+          ...s,
+          players: players.map((p) => (p.id === id ? { ...p, name, imageUrl: action.player.imageUrl } : p)),
+        };
+      }
+      const player: Player = { id, name, imageUrl: action.player.imageUrl, teamId: smallestTeam(s) };
+      return { ...s, players: [...players, player] };
+    }
+
+    case "removePlayer": {
+      const players = s.players ?? [];
+      if (!players.some((p) => p.id === action.playerId)) fail("That player isn't in this game.");
+      return { ...s, players: players.filter((p) => p.id !== action.playerId) };
+    }
+
+    case "movePlayer": {
+      const players = s.players ?? [];
+      if (!players.some((p) => p.id === action.playerId)) fail("That player isn't in this game.");
+      if (action.teamId !== null) findTeam(s, action.teamId);
+      return {
+        ...s,
+        players: players.map((p) => (p.id === action.playerId ? { ...p, teamId: action.teamId } : p)),
+      };
+    }
+
+    case "randomizeTeams": {
+      if (phase.kind !== "lobby") fail("Teams can only be shuffled in the lobby.");
+      const players = s.players ?? [];
+      if (players.length === 0) fail("Nobody has joined yet.");
+      if (s.teams.length === 0) fail("Set up the teams first.");
+      const rand = seededRandom(action.seed);
+      const order = players.map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      // Deal round-robin from a random team, so the same team doesn't always get the extra player.
+      const offset = Math.floor(rand() * s.teams.length);
+      const teamOf = new Map(order.map((pi, k) => [pi, s.teams[(offset + k) % s.teams.length].id]));
+      return { ...s, players: players.map((p, i) => ({ ...p, teamId: teamOf.get(i)! })) };
     }
 
     case "startGame": {
@@ -175,7 +253,7 @@ function reduce(s: Snapshot, action: Exclude<Action, { type: "undo" }>, now: num
         c === tile.col ? col.map((p, r) => p || r === tile.row) : col,
       );
       const pickerId = s.teams[s.turn].id;
-      if (q.bonus) {
+      if (asksForWager(q)) {
         return { ...s, played, phase: { kind: "bonusReveal", tile, teamId: pickerId } };
       }
       return { ...s, played, phase: openQuestion(s, tile, pickerId, null, now) };
@@ -191,18 +269,21 @@ function reduce(s: Snapshot, action: Exclude<Action, { type: "undo" }>, now: num
     case "correct":
     case "wrong": {
       if (phase.kind !== "question") fail("There is no question being answered.");
-      const stake = phase.wager ?? getQuestion(s.game, phase.tile).value;
+      if (phase.stage === "all") fail("On Closest Wins, enter every team's guess instead.");
+      const q = getQuestion(s.game, phase.tile);
+      const stake = phase.wager ?? q.value;
       const isSteal = phase.stage === "steal";
       const right = action.type === "correct";
       // Steals are risk-free: a wrong steal costs nothing.
       const delta = right ? stake : isSteal ? 0 : -stake;
+      const { teams, streak, streakBonus } = recordAnswer(s.teams, phase.answeringId, right, delta);
       const results: TileResult[] = [
         ...phase.results,
-        { teamId: phase.answeringId, delta, steal: isSteal },
+        { teamId: phase.answeringId, delta, steal: isSteal, streak, ...(streakBonus > 0 && { streakBonus }) },
       ];
-      const teams = addToScore(s.teams, phase.answeringId, delta);
 
-      const canSteal = !right && !isSteal && phase.wager === null && s.teams.length > 1;
+      const canSteal =
+        !right && !isSteal && phase.wager === null && questionType(q) !== "trueFalse" && s.teams.length > 1;
       if (canSteal) {
         return {
           ...s,
@@ -215,6 +296,43 @@ function reduce(s: Snapshot, action: Exclude<Action, { type: "undo" }>, now: num
             timer: newTimer(s.game.timerSeconds, now),
           },
         };
+      }
+      return { ...s, teams, phase: { kind: "reveal", tile: phase.tile, results } };
+    }
+
+    case "judgeClosest": {
+      if (phase.kind !== "question" || phase.stage !== "all") fail("This isn't a Closest Wins question.");
+      const q = getQuestion(s.game, phase.tile);
+      const target = q.target;
+      if (target === undefined) fail("This question has no target number.");
+      const entries = Object.entries(action.guesses);
+      if (entries.length === 0) fail("Enter at least one team's guess.");
+      for (const [id, g] of entries) {
+        const team = findTeam(s, id);
+        if (typeof g !== "number" || !Number.isFinite(g)) fail(`${team.name}'s guess isn't a number.`);
+      }
+      const best = Math.min(...entries.map(([, g]) => Math.abs(g - target)));
+      let teams = s.teams;
+      const results: TileResult[] = [];
+      // Team order, so the TV lists guesses consistently.
+      for (const t of s.teams) {
+        const guess = action.guesses[t.id];
+        if (guess === undefined) continue;
+        if (Math.abs(guess - target) === best) {
+          const r = recordAnswer(teams, t.id, true, q.value);
+          teams = r.teams;
+          results.push({
+            teamId: t.id,
+            delta: q.value,
+            steal: false,
+            guess,
+            streak: r.streak,
+            ...(r.streakBonus > 0 && { streakBonus: r.streakBonus }),
+          });
+        } else {
+          // Not being closest costs nothing and doesn't break a streak.
+          results.push({ teamId: t.id, delta: 0, steal: false, guess });
+        }
       }
       return { ...s, teams, phase: { kind: "reveal", tile: phase.tile, results } };
     }
@@ -306,9 +424,12 @@ function reduce(s: Snapshot, action: Exclude<Action, { type: "undo" }>, now: num
       }
       const wager = phase.wagers[action.teamId];
       const delta = action.correct ? wager : -wager;
+      const teams = addToScore(s.teams, action.teamId, delta).map((t) =>
+        t.id === action.teamId && action.correct ? { ...t, correct: t.correct + 1 } : t,
+      );
       return {
         ...s,
-        teams: addToScore(s.teams, action.teamId, delta),
+        teams,
         phase: {
           ...phase,
           judgments: {
@@ -334,12 +455,13 @@ function openQuestion(
   wager: number | null,
   now: number,
 ): Phase {
+  const closest = questionType(getQuestion(s.game, tile)) === "closest";
   return {
     kind: "question",
     tile,
     pickerId,
     answeringId: pickerId,
-    stage: "picker",
+    stage: closest ? "all" : "picker",
     wager,
     results: [],
     timer: newTimer(s.game.timerSeconds, now),
@@ -351,6 +473,41 @@ function enterFinal(s: Snapshot): Snapshot {
   if (eligible.length === 0) return { ...s, phase: { kind: "winner" } };
   const wagers = Object.fromEntries(eligible.map((id) => [id, null]));
   return { ...s, phase: { kind: "finalWager", wagers } };
+}
+
+/** Team with the fewest players (earliest in turn order on a tie); null before teams exist. */
+function smallestTeam(s: Snapshot): string | null {
+  let best: string | null = null;
+  let bestCount = Infinity;
+  for (const t of s.teams) {
+    const n = teamMembers(s, t.id).length;
+    if (n < bestCount) {
+      best = t.id;
+      bestCount = n;
+    }
+  }
+  return best;
+}
+
+/**
+ * Scores an answer and updates the team's streak: a correct answer extends it
+ * (paying a bonus every few in a row), a wrong one resets it.
+ */
+function recordAnswer(
+  teams: Team[],
+  teamId: string,
+  right: boolean,
+  delta: number,
+): { teams: Team[]; streak: number; streakBonus: number } {
+  const team = teams.find((t) => t.id === teamId) ?? fail(`Unknown team "${teamId}".`);
+  const streak = right ? (team.streak ?? 0) + 1 : 0;
+  const streakBonus = right && streak % STREAK_BONUS_EVERY === 0 ? STREAK_BONUS : 0;
+  const next = teams.map((t) =>
+    t.id === teamId
+      ? { ...t, score: t.score + delta + streakBonus, streak, correct: (t.correct ?? 0) + (right ? 1 : 0) }
+      : t,
+  );
+  return { teams: next, streak, streakBonus };
 }
 
 function addToScore(teams: Team[], teamId: string, delta: number): Team[] {
@@ -373,12 +530,23 @@ function checkWager(amount: number, max: number): number {
 
 function describeAction(s: Snapshot, action: Action): string {
   const name = (id: string) => s.teams.find((t) => t.id === id)?.name ?? id;
+  const playerName = (id: string) => s.players?.find((p) => p.id === id)?.name ?? "Player";
   const signed = (n: number) => (n < 0 ? `−${-n}` : `+${n}`);
   const phase = s.phase;
 
   switch (action.type) {
     case "setTeams":
       return "Set teams";
+    case "addPlayer":
+      return `${action.player.name} joined`;
+    case "removePlayer":
+      return `Remove ${playerName(action.playerId)}`;
+    case "movePlayer":
+      return action.teamId
+        ? `${playerName(action.playerId)} to ${name(action.teamId)}`
+        : `Bench ${playerName(action.playerId)}`;
+    case "randomizeTeams":
+      return "Shuffle teams";
     case "startGame":
       return "Start game";
     case "pickTile": {
@@ -398,6 +566,8 @@ function describeAction(s: Snapshot, action: Action): string {
       }
       return `${name(phase.answeringId)} ${signed(right ? stake : -stake)}`;
     }
+    case "judgeClosest":
+      return "Closest guesses";
     case "revealAnswer":
       return "Reveal answer";
     case "continue":

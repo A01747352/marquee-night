@@ -61,6 +61,45 @@ describe("soundFor", () => {
     expect(stingAfter(judged.next, { type: "showWinner" }).sound).toBe("winner");
   });
 
+  it("plays the ominous sting when a deep-cut (last row) tile opens", () => {
+    expect(stingAfter(start(), { type: "pickTile", col: 0, row: 4 }).sound).toBe("deepCut");
+  });
+
+  it("follows the ding with the streak sting from 3 in a row", () => {
+    let s = start();
+    // Team A gets three right; B passes with a reveal each time.
+    const tiles: [number, number][] = [[0, 0], [1, 0], [2, 0]];
+    let last: ReturnType<typeof soundFor> = null;
+    tiles.forEach(([col, row], i) => {
+      s = applyAction(s, { type: "pickTile", col, row }, 0);
+      const before = toPublicView(s, 0).phase;
+      s = applyAction(s, { type: "correct" }, 0);
+      last = soundFor(before, toPublicView(s, 0).phase);
+      s = applyAction(s, { type: "continue" }, 0);
+      if (i < 2) {
+        s = [{ type: "pickTile", col, row: 1 }, { type: "revealAnswer" }, { type: "continue" }].reduce(
+          (acc, a) => applyAction(acc, a as Action, 0),
+          s,
+        );
+      }
+    });
+    expect(last).toMatchObject({ name: "correct", then: { name: "streak" } });
+  });
+
+  it("dings on Closest Wins when anyone scored, even if a loser is listed last", () => {
+    const r = validateGame(sample);
+    if (!r.ok) throw new Error();
+    r.game.categories[0].questions[1] = { ...r.game.categories[0].questions[1], type: "closest", target: 10, bonus: false };
+    let s = [
+      { type: "setTeams", teams: [{ name: "A", color: "" }, { name: "B", color: "" }] },
+      { type: "startGame" },
+      { type: "pickTile", col: 0, row: 1 },
+    ].reduce((acc, a) => applyAction(acc, a as Action, 0), createGameState(r.game));
+    const before = toPublicView(s, 0).phase;
+    s = applyAction(s, { type: "judgeClosest", guesses: { t1: 10, t2: 99 } }, 0);
+    expect(soundFor(before, toPublicView(s, 0).phase)?.name).toBe("correct");
+  });
+
   it("doesn't re-ding when nothing new happened (e.g. timer pause)", () => {
     const opened = stingAfter(start(), { type: "pickTile", col: 0, row: 0 }).next;
     expect(stingAfter(opened, { type: "timerPause" }).sound).toBeNull();

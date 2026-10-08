@@ -6,6 +6,8 @@ import type { Media } from "@/lib/game";
 export const IMAGE_TARGET_BYTES = 500 * 1024;
 /** Audio can't be re-encoded in the browser, so we cap it instead. */
 export const AUDIO_MAX_BYTES = 1.5 * 1024 * 1024;
+/** Video embeds bloat the game file fast; keep clips short or link them. */
+export const VIDEO_MAX_BYTES = 4 * 1024 * 1024;
 const MAX_DIMENSION = 1600;
 
 export interface MediaResult {
@@ -94,5 +96,13 @@ export async function fileToMedia(file: File): Promise<MediaResult> {
     }
     return { media: { type: "audio", src: await readAsDataUrl(file) }, note: `Audio · ${formatBytes(file.size)}` };
   }
-  throw new Error("Drop an image or an audio file.");
+  if (file.type.startsWith("video/")) {
+    if (file.size > VIDEO_MAX_BYTES) {
+      throw new Error(
+        `That video is ${formatBytes(file.size)}. Keep clips under ${formatBytes(VIDEO_MAX_BYTES)}: trim it, or paste a URL instead.`,
+      );
+    }
+    return { media: { type: "video", src: await readAsDataUrl(file) }, note: `Video · ${formatBytes(file.size)}` };
+  }
+  throw new Error("Drop an image, audio or video file.");
 }

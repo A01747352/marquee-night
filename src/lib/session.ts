@@ -12,6 +12,10 @@ export interface Session {
   state: GameState;
   /** Sound is muted from the host remote; kept here so it survives a refresh. */
   muted?: boolean;
+  /** Season night on the leaderboard (null/absent = an unranked game). */
+  nightId?: string | null;
+  /** Results for `nightId` were saved. */
+  recorded?: boolean;
   updatedAt: number;
 }
 

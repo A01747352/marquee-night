@@ -1,21 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { PublicPhase, PublicView } from "@/lib/game";
+import { STREAK_SHOW, type PublicPhase, type PublicView } from "@/lib/game";
 import { audioReady, playSound, subscribeAudio, unlockAudio, type SoundName } from "@/lib/sound";
 
+export interface Sting {
+  name: SoundName;
+  delayMs?: number;
+  /** A second sting after the first (e.g. the streak flame after the ding). */
+  then?: { name: SoundName; delayMs: number };
+}
+
 /** Which sting a phase change deserves, if any. */
-export function soundFor(prev: PublicPhase | null, next: PublicPhase): { name: SoundName; delayMs?: number } | null {
+export function soundFor(prev: PublicPhase | null, next: PublicPhase): Sting | null {
   if (!prev) return null; // first render / refresh: stay quiet
   if (next.kind === "bonusReveal" && prev.kind !== "bonusReveal") return { name: "bonus", delayMs: 350 };
-  if (next.kind === "question" && prev.kind === "board") return { name: "tileOpen" };
+  if (next.kind === "question" && prev.kind === "board") return { name: next.deepCut ? "deepCut" : "tileOpen" };
   if (next.kind === "question" && prev.kind === "question" && next.stage === "steal" && prev.stage === "picker") {
     return { name: "wrong" };
   }
   if (next.kind === "reveal" && prev.kind === "question") {
     // Only judge a result that was just added ("Nobody got it · reveal" adds none).
-    if (next.results.length <= prev.results.length) return null;
-    return { name: next.results.at(-1)!.delta > 0 ? "correct" : "wrong" };
+    const added = next.results.slice(prev.results.length);
+    if (added.length === 0) return null;
+    // Closest Wins adds every team at once: ding if anyone scored.
+    const scored = added.some((r) => r.delta > 0);
+    const hot = added.some((r) => r.delta > 0 && (r.streak ?? 0) >= STREAK_SHOW);
+    return {
+      name: scored ? "correct" : "wrong",
+      ...(hot && { then: { name: "streak" as const, delayMs: 900 } }),
+    };
   }
   if (next.kind === "finalReveal" && prev.kind === "finalReveal") {
     const before = Object.keys(prev.revealed).length;
@@ -63,7 +77,12 @@ export function useGameSounds(view: PublicView | null, muted: boolean): { needsU
     prev.current = view.phase;
     if (!sting || mutedRef.current) return;
     const t = setTimeout(() => playSound(sting.name), sting.delayMs ?? 0);
-    return () => clearTimeout(t);
+    const then = sting.then;
+    const t2 = then && setTimeout(() => playSound(then.name), (sting.delayMs ?? 0) + then.delayMs);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
   }, [view]);
 
   // Timer end: schedule the buzzer for when the running timer hits zero.

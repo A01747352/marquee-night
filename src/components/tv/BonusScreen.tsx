@@ -7,6 +7,7 @@ type BonusPhase = Extract<PublicPhase, { kind: "bonusReveal" }>;
 
 export function BonusScreen({ phase, teams }: { phase: BonusPhase; teams: Team[] }) {
   const team = teams.find((t) => t.id === phase.teamId);
+  const wager = phase.reason === "wager";
   return (
     <div className="relative flex h-full flex-col items-center justify-center overflow-hidden bg-bg">
       <div className="bonus-rays absolute top-1/2 left-1/2 h-[3200px] w-[3200px] -translate-x-1/2 -translate-y-1/2 animate-spin-slow" />
@@ -22,7 +23,7 @@ export function BonusScreen({ phase, teams }: { phase: BonusPhase; teams: Team[]
           transition={{ type: "spring", stiffness: 260, damping: 13, delay: 0.15 }}
           className="font-display text-[300px] font-black leading-[0.95] tracking-[0.02em] text-glow-gold-heavy"
         >
-          BONUS!
+          {wager ? "WAGER!" : "BONUS!"}
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -30,8 +31,12 @@ export function BonusScreen({ phase, teams }: { phase: BonusPhase; teams: Team[]
           transition={{ delay: 0.6 }}
           className="mt-4 flex flex-col items-center gap-4"
         >
-          <div className="text-[56px] font-semibold">{team ? `${team.name}, place your wager` : "Place your wager"}</div>
-          <div className="text-[32px] text-text-muted">Up to {phase.maxWager} · no steal on this tile</div>
+          <div className="text-[56px] font-semibold">
+            {team ? `${team.name}, how much will you risk?` : "How much will you risk?"}
+          </div>
+          <div className="text-[32px] text-text-muted">
+            {wager ? "You'll see the question after you bet" : "Bonus tile"} · up to {phase.maxWager} · no steal
+          </div>
         </motion.div>
       </div>
     </div>

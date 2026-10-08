@@ -65,9 +65,19 @@ export function useTvGame() {
     saveSession(next).catch((err) => console.error("Could not save the game", err));
   }, []);
 
+  const markRecorded = useCallback(() => {
+    const current = sessionRef.current;
+    if (!current || current.recorded) return;
+    const next = { ...current, recorded: true };
+    sessionRef.current = next;
+    setCurrent((c) => ({ ...c, session: next }));
+    saveSession(next).catch((err) => console.error("Could not save the game", err));
+  }, []);
+
   return {
     status,
     setMuted,
+    markRecorded,
     session,
     state: session?.state ?? null,
     publicView,

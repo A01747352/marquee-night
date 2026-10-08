@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useMemo } from "react";
-import { formatScore, standings, type PublicView, type Team } from "@/lib/game";
+import { finishPlaces, formatScore, rankingPoints, standings, type PublicView, type Team } from "@/lib/game";
 import { Eyebrow } from "./parts";
 
 const PODIUM = [
@@ -12,8 +12,19 @@ const PODIUM = [
   { rank: 3, height: 240, className: "bg-[linear-gradient(180deg,#1d3a9e,#0d1d66)]" },
 ];
 
-export function WinnerScreen({ view }: { view: PublicView }) {
+export type RecordStatus = "off" | "saving" | "saved" | "error";
+
+const RECORD_LABEL: Record<Exclude<RecordStatus, "off">, string> = {
+  saving: "SAVING TO THE SEASON LEADERBOARD…",
+  saved: "SAVED TO THE SEASON LEADERBOARD ✓",
+  error: "COULDN'T SAVE TO THE LEADERBOARD · RETRYING",
+};
+
+export function WinnerScreen({ view, record = "off" }: { view: PublicView; record?: RecordStatus }) {
   const ranked = standings(view.teams);
+  const places = finishPlaces(ranked);
+  const hasPlayers = view.players.length > 0;
+  const members = (id: string) => view.players.filter((p) => p.teamId === id).map((p) => p.name);
   const top = ranked[0]?.score;
   const winners = ranked.filter((t) => t.score === top);
   const rest = ranked.slice(3);
@@ -35,6 +46,14 @@ export function WinnerScreen({ view }: { view: PublicView }) {
         </motion.div>
       </div>
 
+      {record !== "off" && (
+        <div
+          className={`relative mt-6 font-mono text-[20px] tracking-[0.2em] ${record === "saved" ? "text-correct-soft" : record === "error" ? "text-wrong-soft" : "text-text-dim"}`}
+        >
+          {RECORD_LABEL[record]}
+        </div>
+      )}
+
       <div className="relative mt-auto flex items-end gap-6">
         {PODIUM.map(({ rank, height, className }, i) => {
           const team: Team | undefined = ranked[rank - 1];
@@ -53,6 +72,16 @@ export function WinnerScreen({ view }: { view: PublicView }) {
                 <span className="truncate">{team.name}</span>
               </div>
               <div className="font-display text-[52px] font-black">{formatScore(team.score)}</div>
+              {hasPlayers && (
+                <>
+                  <div className="font-mono text-[20px] tracking-[0.16em] opacity-80">
+                    +{rankingPoints(places[rank - 1], team.correct ?? 0)} RP EACH
+                  </div>
+                  <div className="mt-1 line-clamp-2 px-5 text-center text-[20px] leading-tight opacity-80">
+                    {members(team.id).join(" · ")}
+                  </div>
+                </>
+              )}
             </motion.div>
           );
         })}
@@ -62,7 +91,8 @@ export function WinnerScreen({ view }: { view: PublicView }) {
         <div className="absolute right-[64px] bottom-[48px] flex flex-col gap-2 text-right">
           {rest.map((t, i) => (
             <div key={t.id} className="text-[26px] text-text-muted">
-              {i + 4}. {t.name} · <span className="font-display font-black">{formatScore(t.score)}</span>
+              {places[i + 3]}. {t.name} · <span className="font-display font-black">{formatScore(t.score)}</span>
+              {hasPlayers && <span className="font-mono text-[18px]"> · +{rankingPoints(places[i + 3], t.correct ?? 0)} RP</span>}
             </div>
           ))}
         </div>

@@ -9,7 +9,7 @@ import { Lobby } from "./Lobby";
 import { FLIP_COVER_S, TileFlip, TvMemoryProvider } from "./motion";
 import { QuestionScreen } from "./QuestionScreen";
 import { RevealScreen } from "./RevealScreen";
-import { WinnerScreen } from "./WinnerScreen";
+import { WinnerScreen, type RecordStatus } from "./WinnerScreen";
 
 /**
  * Everything the room sees. Takes a PublicView only, which never carries an
@@ -19,15 +19,24 @@ export function TvDisplay({
   view,
   roomCode,
   joinUrl,
+  hostUrl,
+  playersJoin = false,
   hostConnected,
   localOnly,
+  ranked = false,
+  record = "off",
   onPick,
 }: {
   view: PublicView;
   roomCode: string;
   joinUrl: string;
+  hostUrl: string;
+  /** Players sign in on their phones (the QR is for them, not the host). */
+  playersJoin?: boolean;
   hostConnected: boolean;
   localOnly: boolean;
+  ranked?: boolean;
+  record?: RecordStatus;
   onPick?: (col: number, row: number) => void;
 }) {
   const p = view.phase;
@@ -42,8 +51,11 @@ export function TvDisplay({
           view={view}
           roomCode={roomCode}
           joinUrl={joinUrl}
+          hostUrl={hostUrl}
+          playersJoin={playersJoin}
           hostConnected={hostConnected}
           localOnly={localOnly}
+          ranked={ranked}
         />
       );
       break;
@@ -69,7 +81,7 @@ export function TvDisplay({
       screen = <FinalRevealScreen phase={p} teams={view.teams} />;
       break;
     case "winner":
-      screen = <WinnerScreen view={view} />;
+      screen = <WinnerScreen view={view} record={record} />;
       break;
   }
 

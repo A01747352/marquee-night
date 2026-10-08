@@ -1,13 +1,21 @@
 import {
   CATEGORY_COUNT,
+  CONNECTION_CLUES,
   DEFAULT_TIMER_SECONDS,
+  MAX_CHOICES,
   MAX_BONUS_TILES,
   MAX_TIMER_SECONDS,
+  MIN_CHOICES,
   MIN_TIMER_SECONDS,
+  ORDER_ITEMS,
   QUESTIONS_PER_CATEGORY,
   STANDARD_VALUES,
 } from "./constants";
-import type { Category, FinalQuestion, GameFile, Media, Question } from "./types";
+import { defaultPrompt, QUESTION_TYPE_ORDER, QUESTION_TYPES, questionType } from "./questions";
+import type { Category, FinalQuestion, GameFile, Media, MediaType, Question, QuestionType } from "./types";
+
+const MEDIA_TYPES: MediaType[] = ["image", "audio", "video"];
+const isMediaType = (v: unknown): v is MediaType => MEDIA_TYPES.includes(v as MediaType);
 
 export type ParseResult =
   | { ok: true; game: GameFile; warnings: string[] }
@@ -149,17 +157,90 @@ function validateQuestion(
     if (value !== standard) warnings.push(`${where} is worth ${value}; the standard value is ${standard}.`);
   }
 
+  let type: QuestionType = "standard";
+  if (raw.type !== undefined) {
+    if (typeof raw.type === "string" && raw.type in QUESTION_TYPES) type = raw.type as QuestionType;
+    else errors.push(`${where}: type must be one of ${QUESTION_TYPE_ORDER.join(", ")}.`);
+  }
+  const info = QUESTION_TYPES[type];
+
   const question = text(raw.question);
-  const answer = text(raw.answer);
-  if (!question) errors.push(`${where}: the question is missing.`);
-  if (!answer) errors.push(`${where}: the answer is missing.`);
+  let answer = text(raw.answer);
+  // Order It and Connection have a sensible default prompt.
+  if (!question && !defaultPrompt(type)) errors.push(`${where}: the question is missing.`);
 
   if (raw.bonus !== undefined && typeof raw.bonus !== "boolean") {
     errors.push(`${where}: bonus must be true or false.`);
   }
+  const bonus = raw.bonus === true;
   const media = validateMedia(raw.media, where, errors, warnings);
 
-  return { value, question, answer, ...(media && { media }), bonus: raw.bonus === true };
+  let options: string[] | undefined;
+  let target: number | undefined;
+  const optionList = (label: string, min: number, max: number): string[] => {
+    if (!Array.isArray(raw.options)) {
+      errors.push(`${where}: add ${min === max ? min : `${min}–${max}`} ${label}.`);
+      return [];
+    }
+    const list = raw.options.map(text);
+    if (list.length < min || list.length > max) {
+      errors.push(`${where}: needs ${min === max ? `exactly ${min}` : `${min}–${max}`} ${label}; it has ${list.length}.`);
+    }
+    if (list.some((o) => !o)) errors.push(`${where}: one of the ${label} is blank.`);
+    return list;
+  };
+
+  switch (type) {
+    case "multipleChoice": {
+      options = optionList("choices", MIN_CHOICES, MAX_CHOICES);
+      const match = options.find((o) => o.toLowerCase() === answer.toLowerCase());
+      if (answer && options.length > 0 && !match) errors.push(`${where}: the answer must be one of the choices.`);
+      if (match) answer = match;
+      break;
+    }
+    case "trueFalse":
+      if (/^(true|t)$/i.test(answer)) answer = "True";
+      else if (/^(false|f)$/i.test(answer)) answer = "False";
+      else if (answer) errors.push(`${where}: the answer must be True or False.`);
+      break;
+    case "closest": {
+      const t = raw.target;
+      if (typeof t !== "number" || !Number.isFinite(t)) {
+        errors.push(`${where}: Closest Wins needs a target number.`);
+      } else {
+        target = t;
+        if (!answer) answer = t.toLocaleString("en-US");
+      }
+      if (bonus) errors.push(`${where}: a Closest Wins tile can't be a bonus tile (every team answers).`);
+      break;
+    }
+    case "order":
+      options = optionList("items", ORDER_ITEMS, ORDER_ITEMS);
+      if (!answer && options.every(Boolean)) answer = options.join(" → ");
+      break;
+    case "connection":
+      options = optionList("clues", CONNECTION_CLUES, CONNECTION_CLUES);
+      break;
+    case "wager":
+      if (bonus) errors.push(`${where}: a Wager tile already asks for a wager, so it can't also be a bonus tile.`);
+      break;
+  }
+
+  if (!answer) errors.push(`${where}: the answer is missing.`);
+  if (info.media && media?.type !== info.media) {
+    errors.push(`${where}: a ${info.label} question needs ${info.media === "image" ? "an image" : `a${info.media === "audio" ? "n audio clip" : " video"}`}.`);
+  }
+
+  return {
+    value,
+    ...(type !== "standard" && { type }),
+    question,
+    answer,
+    ...(options && { options }),
+    ...(target !== undefined && { target }),
+    ...(media && { media }),
+    bonus,
+  };
 }
 
 function validateMedia(raw: unknown, where: string, errors: string[], warnings: string[]): Media | null {
@@ -170,8 +251,8 @@ function validateMedia(raw: unknown, where: string, errors: string[], warnings: 
   }
   const type = raw.type;
   const src = text(raw.src);
-  if (type !== "image" && type !== "audio") {
-    errors.push(`${where}: media type must be "image" or "audio".`);
+  if (!isMediaType(type)) {
+    errors.push(`${where}: media type must be "image", "audio" or "video".`);
     return null;
   }
   if (!src) {
@@ -204,8 +285,11 @@ export function exportGame(game: GameFile): string {
       name: c.name,
       questions: c.questions.map((q) => ({
         value: q.value,
+        ...(questionType(q) !== "standard" && { type: q.type }),
         question: q.question,
         answer: q.answer,
+        ...(q.options && { options: q.options }),
+        ...(q.target !== undefined && { target: q.target }),
         ...media(q.media),
         bonus: q.bonus,
       })),
@@ -259,10 +343,16 @@ export function draftFromUnknown(data: unknown): GameFile {
         if (!isObj(rq)) return bq;
         const v = rq.value;
         const media = looseMedia(rq.media);
+        const type = typeof rq.type === "string" && rq.type in QUESTION_TYPES ? (rq.type as QuestionType) : undefined;
+        const options = Array.isArray(rq.options) ? rq.options.map(text) : undefined;
+        const target = typeof rq.target === "number" && Number.isFinite(rq.target) ? rq.target : undefined;
         return {
           value: typeof v === "number" && Number.isInteger(v) && v > 0 ? v : bq.value,
+          ...(type && type !== "standard" && { type }),
           question: text(rq.question),
           answer: text(rq.answer),
+          ...(options && { options }),
+          ...(target !== undefined && { target }),
           ...(media && { media }),
           bonus: rq.bonus === true,
         };
@@ -288,11 +378,19 @@ export function draftFromUnknown(data: unknown): GameFile {
 function looseMedia(raw: unknown): Media | null {
   if (!isObj(raw)) return null;
   const src = text(raw.src);
-  if ((raw.type !== "image" && raw.type !== "audio") || !src) return null;
+  if (!isMediaType(raw.type) || !src) return null;
   return { type: raw.type, src };
 }
 
-export const isQuestionWritten = (q: Question) => q.question.trim() !== "" && q.answer.trim() !== "";
+/** What's stopping one tile from being playable (the first problem), or null. */
+export function questionProblem(q: Question): string | null {
+  const errors: string[] = [];
+  validateQuestion(q, "", 0, errors, []);
+  if (errors.length === 0) return null;
+  return errors[0].replace(/^:\s*/, "").replace(/^./, (c) => c.toUpperCase());
+}
+
+export const isQuestionWritten = (q: Question) => questionProblem(q) === null;
 
 /** Editor status line numbers. */
 export function gameProgress(game: GameFile) {

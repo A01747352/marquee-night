@@ -5,7 +5,7 @@
  * license or ship. Browsers keep audio locked until the page gets a click or
  * key press; `unlockAudio` resumes it, and `subscribeAudio` reports changes.
  */
-export type SoundName = "tileOpen" | "correct" | "wrong" | "timerEnd" | "bonus" | "winner";
+export type SoundName = "tileOpen" | "deepCut" | "correct" | "wrong" | "timerEnd" | "bonus" | "winner" | "streak";
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -94,6 +94,20 @@ const SOUNDS: Record<SoundName, (t: number) => void> = {
   tileOpen: (t) => {
     noise(t, 0.45, { gain: 0.22, freq: 300, sweepTo: 3500, q: 2 });
     tone(220, t, 0.4, { type: "sine", gain: 0.12, glideTo: 880, attack: 0.05 });
+  },
+  // The hardest row: a falling whoosh into a low, dissonant drone and a heartbeat.
+  deepCut: (t) => {
+    noise(t, 0.6, { gain: 0.2, freq: 2400, sweepTo: 180, q: 2 });
+    tone(73, t + 0.2, 1.8, { type: "sawtooth", gain: 0.12, attack: 0.25 });
+    tone(77.8, t + 0.2, 1.8, { type: "sawtooth", gain: 0.1, attack: 0.25 });
+    tone(36.7, t + 0.2, 1.8, { type: "sine", gain: 0.25, attack: 0.2 });
+    [0.9, 1.15].forEach((d) => tone(55, t + d, 0.18, { type: "sine", gain: 0.35, glideTo: 40 }));
+  },
+  // A crackling whoosh and a rising run: the team is on fire.
+  streak: (t) => {
+    noise(t, 0.7, { gain: 0.16, filter: "bandpass", freq: 900, sweepTo: 5000, q: 0.8 });
+    [659, 880, 1175, 1568].forEach((f, i) => tone(f, t + 0.05 + i * 0.06, 0.25, { type: "square", gain: 0.06 }));
+    tone(1760, t + 0.3, 0.5, { type: "triangle", gain: 0.1 });
   },
   // Bright three-note ding.
   correct: (t) => {

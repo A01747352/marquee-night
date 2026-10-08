@@ -1,5 +1,7 @@
 "use client";
 
+import { Show, SignInButton, UserButton, useAuth } from "@clerk/nextjs";
+import { authEnabled } from "@/lib/auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -15,6 +17,7 @@ import {
   validateGame,
   type GameFile,
 } from "@/lib/game";
+import { createNight } from "@/lib/leaderboard";
 import { listGames, loadGame, type SavedGameMeta } from "@/lib/library";
 import { loadSession, newRoomCode, saveSession, type Session } from "@/lib/session";
 
@@ -47,6 +50,9 @@ function SetupPage() {
   const [teamError, setTeamError] = useState<string | null>(null);
   const [resume, setResume] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isSignedIn, setSignedIn] = useState(false);
+  // Set after the leaderboard failed once: the next click plays unranked.
+  const [unrankedOk, setUnrankedOk] = useState(false);
 
   useEffect(() => {
     loadSession().then((s) => {
@@ -121,7 +127,19 @@ function SetupPage() {
         teams: teams.map((t) => ({ name: t.name, color: t.color })),
       });
       setBusy(true);
-      await saveSession({ roomCode: newRoomCode(), state, updatedAt: Date.now() });
+      const roomCode = newRoomCode();
+      let nightId: string | null = null;
+      if (isSignedIn && !unrankedOk) {
+        const night = await createNight(game.title, roomCode);
+        if ("error" in night) {
+          setBusy(false);
+          setUnrankedOk(true);
+          setTeamError(`${night.error} Click again to play this one unranked.`);
+          return;
+        }
+        nightId = night.id;
+      }
+      await saveSession({ roomCode, state, nightId, updatedAt: Date.now() });
       router.push("/tv");
     } catch (e) {
       setBusy(false);
@@ -135,6 +153,11 @@ function SetupPage() {
         <header className="flex flex-col items-center gap-3 text-center">
           <Wordmark size={72} />
           <p className="text-text-muted">Set up tonight&apos;s game on the screen everyone will watch.</p>
+          {authEnabled && (
+            <Link href="/leaderboard" className="text-sm font-semibold text-gold hover:underline">
+              Season leaderboard →
+            </Link>
+          )}
         </header>
 
         {resume && (
@@ -215,7 +238,7 @@ function SetupPage() {
           {problems.warnings.length > 0 && <Messages tone="warn" title="Heads up:" items={problems.warnings} />}
         </Section>
 
-        <Section step="2" title="Teams" hint="The order here is the turn order.">
+        <Section step="2" title="Teams" hint="Turn order. Players who join are dealt onto these; shuffle from the host phone.">
           <ul className="flex flex-col gap-2">
             {teams.map((t, i) => (
               <li key={t.key} className="flex items-center gap-2 rounded-xl bg-panel p-2 ring-1 ring-panel-border">
@@ -262,6 +285,34 @@ function SetupPage() {
           {teamError && <p className="mt-3 text-wrong-soft">{teamError}</p>}
         </Section>
 
+        {authEnabled && (
+        <Section step="3" title="Season night">
+          <SignedInWatcher onChange={setSignedIn} />
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-panel px-5 py-4 ring-1 ring-panel-border">
+            <Show
+              when="signed-in"
+              fallback={
+                <>
+                  <p className="text-sm text-text-muted">
+                    Sign in to make tonight count on the leaderboard. Players join by scanning the QR code on the TV and
+                    earn points for where their team finishes.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button className="rounded-xl bg-gold px-5 py-2.5 font-semibold text-bg">Sign in</button>
+                  </SignInButton>
+                </>
+              }
+            >
+              <p className="text-sm text-text-muted">
+                <span className="font-semibold text-correct-soft">Ranked.</span> Tonight counts on the season
+                leaderboard for everyone who joins from their phone. You&apos;re the host of record.
+              </p>
+              <UserButton />
+            </Show>
+          </div>
+        </Section>
+        )}
+
         <button
           onClick={openLobby}
           disabled={!game || busy}
@@ -272,6 +323,13 @@ function SetupPage() {
       </div>
     </main>
   );
+}
+
+/** Reports Clerk's sign-in state (only rendered when accounts are on). */
+function SignedInWatcher({ onChange }: { onChange: (signedIn: boolean) => void }) {
+  const { isSignedIn } = useAuth();
+  useEffect(() => onChange(!!isSignedIn), [isSignedIn, onChange]);
+  return null;
 }
 
 function Section({ step, title, hint, children }: { step: string; title: string; hint?: string; children: React.ReactNode }) {

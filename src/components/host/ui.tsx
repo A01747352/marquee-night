@@ -64,11 +64,30 @@ export function Eyebrow({
 }
 
 /** The answer, for the host's eyes only. */
-export function AnswerCard({ answer, label = "Answer · host only" }: { answer: string; label?: string }) {
+export function AnswerCard({
+  answer,
+  lines,
+  label = "Answer · host only",
+}: {
+  answer: string;
+  /** Shown instead of `answer` as a numbered list (Order It). */
+  lines?: string[] | null;
+  label?: string;
+}) {
   return (
     <div className="rounded-[16px] bg-gold px-5 py-4 text-bg shadow-[0_0_30px_rgba(255,197,61,0.25)]">
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] opacity-70">{label}</div>
-      <div className="mt-1 font-display text-[34px] font-black uppercase leading-[1] break-words">{answer}</div>
+      {lines ? (
+        <ol className="mt-1 flex flex-col gap-1">
+          {lines.map((l, i) => (
+            <li key={i} className="font-display text-[24px] font-black uppercase leading-[1.05] break-words">
+              <span className="opacity-60">{i + 1}.</span> {l}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="mt-1 font-display text-[34px] font-black uppercase leading-[1] break-words">{answer}</div>
+      )}
     </div>
   );
 }

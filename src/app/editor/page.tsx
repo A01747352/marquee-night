@@ -210,6 +210,8 @@ function Editor() {
                 if (qi !== tile.row) return q;
                 const next = { ...q, ...patch };
                 if ("media" in patch && !patch.media) delete next.media;
+                // Switching type clears fields (type, options, target) by patching them to undefined.
+                for (const k of Object.keys(next) as (keyof Question)[]) if (next[k] === undefined) delete next[k];
                 return next;
               }),
             },

@@ -1,6 +1,6 @@
 "use client";
 
-import { isQuestionWritten, type GameFile, type TileRef } from "@/lib/game";
+import { isDeepCutRow, QUESTION_TYPES, questionProblem, questionType, type GameFile, type TileRef } from "@/lib/game";
 
 /** 6-column board: editable category names above 30 question cells. */
 export function BoardGrid({
@@ -37,9 +37,11 @@ export function BoardGrid({
         game.categories.map((c, col) => {
           const q = c.questions[row];
           const isSelected = selected?.col === col && selected?.row === row;
-          const written = isQuestionWritten(q);
-          const started = q.question.trim() !== "" || q.answer.trim() !== "";
-          const missing = !q.question.trim() ? "No question" : !q.answer.trim() ? "No answer" : null;
+          const problem = questionProblem(q);
+          const written = problem === null;
+          const type = questionType(q);
+          const started = q.question.trim() !== "" || q.answer.trim() !== "" || type !== "standard";
+          const missing = problem;
 
           return (
             <button
@@ -57,22 +59,34 @@ export function BoardGrid({
               }`}
             >
               <div className="flex w-full items-center justify-between gap-1">
-                <span className="font-display text-[20px] font-black leading-none text-gold">{q.value}</span>
-                {q.bonus && (
-                  <span className="rounded bg-hot px-1.5 py-0.5 font-mono text-[9px] tracking-[0.12em] text-white">
-                    BONUS
-                  </span>
-                )}
+                <span
+                  className={`font-display text-[20px] font-black leading-none ${isDeepCutRow(row, rows) ? "text-wrong-soft" : "text-gold"}`}
+                  title={isDeepCutRow(row, rows) ? "Deep cut: the TV makes this row look and sound scary" : undefined}
+                >
+                  {q.value}
+                </span>
+                <span className="flex gap-1">
+                  {type !== "standard" && (
+                    <span className="truncate rounded bg-cat-bg px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted">
+                      {QUESTION_TYPES[type].label}
+                    </span>
+                  )}
+                  {q.bonus && (
+                    <span className="rounded bg-hot px-1.5 py-0.5 font-mono text-[9px] tracking-[0.12em] text-white">
+                      BONUS
+                    </span>
+                  )}
+                </span>
               </div>
               {q.media && (
                 <span className="absolute right-1.5 bottom-1.5 rounded bg-bg px-1 font-mono text-[9px] tracking-[0.1em] text-text-muted">
-                  {q.media.type === "image" ? "IMG" : "AUDIO"}
+                  {q.media.type === "image" ? "IMG" : q.media.type === "video" ? "VIDEO" : "AUDIO"}
                 </span>
               )}
               {started ? (
                 <>
                   <span className="line-clamp-2 text-[12px] leading-snug text-text-muted">{q.question || "—"}</span>
-                  {missing && <span className="mt-auto text-[11px] font-semibold text-wrong-soft">{missing}</span>}
+                  {missing && <span className="mt-auto line-clamp-2 text-[11px] font-semibold leading-tight text-wrong-soft">{missing}</span>}
                 </>
               ) : (
                 <span className="m-auto text-[13px] font-semibold text-wrong-soft">Empty</span>

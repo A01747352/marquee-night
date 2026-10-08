@@ -1,24 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { toHostView, type Action, type GameState } from "@/lib/game";
+import { toHostView, toPlayerView, type Action, type GameState } from "@/lib/game";
 import { connectRoom, type LinkStatus, type RoomLink, type RoomSettings } from "./room";
 
 /** The host counts as connected if we heard from them this recently. */
 const HOST_TIMEOUT_MS = 25_000;
 
 /**
- * TV side of the room: applies actions from the phone, answers hellos with the
- * full state, and pushes a fresh HostView whenever the game changes.
+ * TV side of the room: applies actions from the host's phone, adds players who
+ * join from theirs, answers hellos with the full state, and pushes fresh views
+ * whenever the game changes.
  */
 export function useRoomHost({
   roomCode,
+  nightId = null,
   state,
   settings,
   dispatch,
   setMuted,
 }: {
   roomCode: string | null;
+  /** Season night id, passed to players so their phones can register for it. */
+  nightId?: string | null;
   state: GameState | null;
   settings: RoomSettings;
   dispatch: (action: Action) => string | null;
@@ -30,9 +34,9 @@ export function useRoomHost({
   const [now, setNow] = useState(0);
 
   // Latest values for the message handlers, which are registered once per room.
-  const latest = useRef({ state, settings, dispatch, setMuted });
+  const latest = useRef({ state, settings, dispatch, setMuted, nightId });
   useEffect(() => {
-    latest.current = { state, settings, dispatch, setMuted };
+    latest.current = { state, settings, dispatch, setMuted, nightId };
   });
 
   useEffect(() => {
@@ -41,6 +45,10 @@ export function useRoomHost({
     const sendState = () => {
       const { state, settings } = latest.current;
       if (state) room.send("state", { view: toHostView(state, Date.now()), settings });
+    };
+    const sendPlayers = () => {
+      const { state, nightId } = latest.current;
+      if (state) room.send("players", { view: toPlayerView(state), nightId });
     };
     const seen = () => setHostSeenAt(Date.now());
 
@@ -63,6 +71,12 @@ export function useRoomHost({
         seen();
         latest.current.setMuted(settings.muted);
       }),
+      room.on("playerHello", sendPlayers),
+      room.on("join", ({ player }) => {
+        latest.current.dispatch({ type: "addPlayer", player });
+        // Answer right away too, so a rejoining phone gets the view even if nothing changed.
+        sendPlayers();
+      }),
     ];
     setLink(room);
     return () => {
@@ -76,6 +90,12 @@ export function useRoomHost({
   useEffect(() => {
     if (link && state) link.send("state", { view: toHostView(state, Date.now()), settings });
   }, [link, state, settings]);
+
+  // Players only care about teams, scores and the phase, not the timer.
+  const playerView = state ? JSON.stringify(toPlayerView(state)) : null;
+  useEffect(() => {
+    if (link && playerView) link.send("players", { view: JSON.parse(playerView), nightId });
+  }, [link, playerView, nightId]);
 
   // Re-evaluate "host connected" every few seconds.
   useEffect(() => {

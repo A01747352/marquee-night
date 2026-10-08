@@ -70,11 +70,11 @@ describe("validateGame", () => {
 
   it("checks media type and src", () => {
     const g = clone(sample) as unknown as { categories: { questions: Record<string, unknown>[] }[] };
-    g.categories[0].questions[0].media = { type: "video", src: "https://x.test/a.mp4" };
+    g.categories[0].questions[0].media = { type: "hologram", src: "https://x.test/a.holo" };
     g.categories[0].questions[1].media = { type: "image", src: "ftp://nope" };
     g.categories[0].questions[2].media = { type: "image", src: "https://example.com/pic.jpg" };
     expect(errorsOf(g)).toEqual([
-      'Category 1 ("Around the World"), question 1: media type must be "image" or "audio".',
+      'Category 1 ("Around the World"), question 1: media type must be "image", "audio" or "video".',
       'Category 1 ("Around the World"), question 2: media src must be a data: URI or an http(s) URL.',
     ]);
   });

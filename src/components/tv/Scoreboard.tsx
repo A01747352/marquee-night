@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import type { Team } from "@/lib/game";
 import { AnimatedScore, useSlidingActive } from "./motion";
+import { StreakBadge } from "./parts";
 
 /** Bottom strip on the board: one card per team, the active team ringed in hot pink. */
 export function Scoreboard({ teams, activeId }: { teams: Team[]; activeId: string | null }) {
@@ -28,7 +29,10 @@ export function Scoreboard({ teams, activeId }: { teams: Team[]; activeId: strin
             </motion.div>
           )}
           <span className="h-full w-3 shrink-0 rounded-l-[12px]" style={{ background: t.color }} />
-          <div className="line-clamp-2 min-w-0 flex-1 text-[28px] leading-[1.1] font-semibold break-words">{t.name}</div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="line-clamp-2 text-[28px] leading-[1.1] font-semibold break-words">{t.name}</div>
+            <StreakBadge streak={t.streak} size={18} />
+          </div>
           <AnimatedScore
             teamId={t.id}
             score={t.score}

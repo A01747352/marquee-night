@@ -66,9 +66,14 @@ export function Board({
                 type="button"
                 disabled={!onPick}
                 onClick={() => onPick?.(col, row)}
-                className="tile-face flex items-center justify-center font-display text-[76px] font-black leading-none text-glow-gold enabled:cursor-pointer enabled:hover:brightness-110"
+                className={`relative flex items-center justify-center font-display text-[76px] font-black leading-none enabled:cursor-pointer enabled:hover:brightness-110 ${tile.deepCut ? "tile-deep text-glow-blood" : "tile-face text-glow-gold"}`}
               >
-                {tile.value}
+                <span className={tile.deepCut ? "animate-flicker" : undefined}>{tile.value}</span>
+                {tile.deepCut && (
+                  <span className="absolute top-2 right-3 font-mono text-[14px] tracking-[0.2em] text-[#ff8a98]/80">
+                    DEEP CUT
+                  </span>
+                )}
               </button>
             );
           }),
